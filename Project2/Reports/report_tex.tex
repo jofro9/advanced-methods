@@ -1,0 +1,221 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\hypersetup{
+  pdftitle={Project 2, Analysis Plan},
+  pdfauthor={Joseph Froelicher},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+\urlstyle{same} % disable monospaced font for URLs
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{tabu}
+\usepackage{threeparttable}
+\usepackage{threeparttablex}
+\usepackage[normalem]{ulem}
+\usepackage{makecell}
+\usepackage{xcolor}
+\usepackage{setspace}
+
+\title{Project 2}
+\author{Joseph Froelicher}
+\date{October 18, 2021}
+
+\begin{document}
+\maketitle
+\begin{doublespace}
+\section{Introduction}
+The purpose of this analysis is to develop an analysis plan and perform sample size calculations for a research grant involving Alzheimer's disease (AD). The goal of the grant is to examine the relationship between inflammation, AD pathology, and cognitive decline over time. The research team would like to have an analysis plan and sample size justification for two particular aims. The aims are as follows:
+
+1. Evaluate longitudinal associations between markers of peripheral inflammation, cognition, and brain structure in Amnestic Mild Cognitive Impairment (aMCI).
+
+2. Examine how markers of peripheral inflammation impact the relationship between AD pathology and clinical progression of aMCI.
+
+The investigative team is interested in a longitudinal evaluation (from baseline to one year follow-up) of innate immune system-associated mechanisms of cognitive decline in aMCI.
+\section{Analysis Plan}
+We will develop several regression models for each aim. There will be a
+regression model for each cytokine/chemokine (IL-6; TNF-alpha; MCP-1; Eotaxin-
+1; Beta-2 microglobulin; and ACT) to predict change in memory as measured by the California Verbal learning Test II (CVLT),
+and a separate regression model for each cytokine/chemokine to predict AD-signature cortica. thickness. Each of these
+models will adjust for age and sex, and cytokine/chemokine baseline values.
+Additionally, for Aim 1, we are
+interested in the same linear models, but rather adjusting for the
+change in chemokine and cytokine level as a covariate instead of
+baseline value. For all models now and going forward, to adjust for multiple
+comparisons of cytokines/chemokines, we will use the standard Bonferroni correction.\(^1\) Addressing Aim 2, will be a
+linear model to predict change in memory from baseline to one year (CVLT),
+with the interaction of amyloid deposition and cytokine/chemokine
+level, and adjusting for age, and sex (one for each cytokine/chemokine). As with Aim 1,
+we are also interested in predicting one year change in AD-signature cortical thickness,
+with the interaction of amyloid deposition and cytokine/chemokine baseline
+level, and adjusting for age, and sex, for each cytokine/chemokine. Amyloid deposition is to be
+treated as an indicator variable, for those with deposition below the median (low-)
+and those with deposition higher than the median (high-). Within these models we will examine as covariates:
+demographics (i.e. age; education), functional (i.e. Clinical
+Dementia Rating, CDR), behavioral (i.e. Geriatric
+Depression Scale, GDS), medication use (i.e. nonsteroidal
+anti-inflammatory drugs, NSAIDs),
+cardiovascular risk metrics (i.e. body mass index,
+BMI; blood pressure; history of
+hypercholesterolemia), APOE genotype, and
+diagnostic information. We would also
+like to keep the model a reasonable size while adjusting for these covariates.
+We will manage the model size by doing backward selection
+for variables that contribute significantly to expalined variance in the outcome.
+In addition to all models mentioned above we are also interested in the models decribed above that
+include all cytokines/chemokines in the model.
+\section{Sample Size Justification}
+This study was powered initially using the association described in Aim
+1., the association between basiline cytokine and chemokine levels, and
+change in memory from baseline. To detect a correlation of 0.25, using a
+Bonferroni correction\(^1\) to correct for six chemokines and
+cytokines, and adequate power of \(80\)\%. This sample-size calculation
+yielded a sample size of 186.
+
+Using a sample size of 186 for Aim 2, where there are 93 in each of the
+low and high amyloid deposition groups (low and high), and a correlation
+of 0 for the low amyloid group and a correlation of 0.4 for the high
+amyloid group, yielded a power of only \(58\)\%. In order to account for
+\(80\)\% power in Aim 2, the sample size was recalculated. For each of
+the low- and high-amyloid deposition groups, we now need 138 subjects.
+This was calculated using the same Type-I error rate as before.
+
+After recalculation, and accounting for \(10\)\% attrition, the final
+necessary sample size is 304 subjects, where 121 will be healthy controls (HC) and 183 will
+be aMCI. All sample size and power calculations were done using G * Power.\(^2\)
+\section{Budget Justification}
+The total estimate 5-year statistical support budget is \$389,000, with
+larger amounts allocated for the first and last years (Table 1.). The
+job of the Senior Biostatistician is to be the statistical support team
+supervisor. In the first year the Senior on the team will be attending
+meetings, and advising the Junior Biostatistician and Research Assistant, as well as any
+potential supervision of the Data Manager. The senior biostatistician is also responisble
+for assembling the statistical team, and onboarding new members as positions
+change hands. The Junior Biostatistician
+will be the primary analyst on all analyses as outlined above, with support from the
+Research Assistant, and supervision from the Senior Biostatiscian. The
+Data Manager will require little supervision, and may require some
+support from the Research Assistant. The data manager is only needed for
+the first two and final years. Their goal is to establish a well documented
+database in the first year, and onboard all other team memebers to use of
+that database. In the final year the Data manager is available as needed.
+The research assistant provides support as needed to all other members,
+and is expected to gain practical domain knowledge in addition to learning
+and honing statistical skills.
+
+Please note that each member of the statistical support team expects to
+be supported both financially, and academically by inclusion as
+co-authors in any manuscripts where contributions were made. Manuscript
+writing will be done primarily by the Junior and Research Assistant,
+with editorial supervision from the Senior Biostatistician.
+\end{doublespace}
+\newpage
+\begin{center}
+\begin{tabular}{rccccc}
+\toprule
+ & Year 1 & Year 2 & Year 3 & Year 4 & Year 5\\
+\midrule
+\textit{Senior Biostatistician} &  &  &  &  & \\
+Salary (\$) & 115000 & 115000 & 115000 & 115000 & 115000\\
+Benefits & 32200 & 32200 & 32200 & 32200 & 32200\\
+Effort (\%) & 15 & 5 & 5 & 5 & 15\\
+Cost & 22080 & 7360 & 7360 & 7360 & 22080\\
+\addlinespace
+\textit{Junior Biostatistician} &  &  &  &  & \\
+Salary (\$) & 80000 & 80000 & 80000 & 80000 & 80000\\
+Benefits & 22400 & 22400 & 22400 & 22400 & 22400\\
+Effort (\%) & 50 & 25 & 25 & 25 & 50\\
+Cost & 51200 & 25600 & 25600 & 25600 & 51200\\
+\addlinespace
+\textit{Data Manager} &  &  &  &  & \\
+Salary (\$) & 65000 & 65000 & NA & NA & 65000\\
+Benefits & 18200 & 18200 & NA & NA & 18200\\
+Effort (\%) & 50 & 25 & NA & NA & 5\\
+Cost & 41600 & 20800 & NA & NA & 4160\\
+\addlinespace
+\textit{Research Assistant} &  &  &  &  & \\
+Salary (\$) & 31000 & 31000 & 31000 & 31000 & 31000\\
+Benefits & 13000 & 13000 & 13000 & 13000 & 13000\\
+Effort (\%) & 50 & 25 & 25 & 25 & 50\\
+Cost & 22000 & 11000 & 11000 & 11000 & 22000\\
+\addlinespace
+Total & 136880 & 64760 & 43960 & 43960 & 99440\\
+\bottomrule
+\end{tabular}
+
+\textbf{Table 1.} Five year statistical support budget justification.
+\end{center}
+
+\newpage
+\section{References}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Faul, F., Erdfelder, E., Buchner, A., \& Lang, A.-G. (2009).
+  Statistical power analyzes using G * Power 3.1: Tests for correlation
+  and regression analyzes. Behavior Research Methods , 41 , 1149-1160
+\item
+  Bonferroni, C. E. (1935). Il calcolo delle assicurazioni su gruppi di
+  teste. Studi in onore del professore salvatore ortu carboni, 13-60.
+\end{enumerate}
+
+\end{document}

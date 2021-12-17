@@ -1,0 +1,63 @@
+---
+title: "Project 1 Analysis Plan"
+author: "Joseph Froelicher"
+date: September 27, 2021
+output: pdf_document
+---
+
+```{r setup, echo = FALSE, include = FALSE, warning = FALSE}
+library(janitor)
+library(jstable)
+library(kableExtra)
+
+data = read.csv('../data_raw/hiv_6624_final.csv') %>% clean_names()
+
+```
+
+\section{Introduction}
+
+This is a secondary data analysis of the Multicenter AIDS Cohort Study, which an ongoing prospective cohort study of the natural and treated histories of HIV-1 infection in homosexual and bisexual men, in four major cities in the United States. Highly active anti-retroviral treatment (HAART) is the standard treatment for HIV infected patients. The data include up to 8 years of longitudinal laboratory and quality of life measures, in addition to demographic and other health information, on HIV infected men after beginning HAART. The subjects were seen annually.  Year 0 data are from the subjects’ last untreated visit, just before beginning HAART.  All other visits (year 1 up to 8) are on treatment.
+
+There are four measures of treatment response. The first two are laboratory measures, viral load (VLOAD), which is the number of HIV copies in one mL of blood, and the second, is CD4+ T cell count (LEU3N), a measure of immunologic health. In untreated HIV infection, viral load increases over time and CD4+ T cell counts decline as the immune system is attacked by the virus. Once treatment is initiated, the investigators expect viral load to decrease rapidly and CD4 counts to recover. The final two measures are quality of life measures from the SF-36. The first is the aggregate physical quality of life score (AGG_PHYS) and the second is the aggregate mental quality of life score (AGG_MENT). These scores range from 0 to 100, with higher scores indicating better quality of life. It is unclear what happens to quality of life after initiating treatment. Theoretically, subjects’ improving health should result in increased quality of life, however, the side effects of these treatments are significant. If subjects experience declines in quality of life after initiating treatment there should be concern that subjects' would stop treatment.
+
+The purpose of this report is to develop the analysis plan to answer the following hypothesis/question of interesd:
+
+1. How is treatment response 2 years after initiating HAART differerent between subjects who report using hard drugs, such as heroine and cocaine, at baseline and other subjects, who did not report hard drug use at baseline.
+
+2. Are any additional variables are associated with hard drug use. The investigators have identified several variables of interest, including: age, BMI, smoking status, education, race/ethnicity, and adherence.
+
+\section{Methods}
+\subsection{Data Cleaning}
+
+Value ranges have been provided for numeric variables, and have been replaced as missing. Viral load will be log base 10 transformed due to extremely large values. Typical ranges of Cd4+ are between 500 and 1,500, and thus a value below 200 results in an AIDS Diagnosis. This will be kept in mind during the analysis. Values of 9 or 999 were recorded for DYSLIP, FP, FRP, BMI, where there were insufficient data, and thus will be treated as missing.
+
+\subsection{Data Analysis}
+
+The analysis performed will be a simple linear regression in a Bayesian framework, with its frequentist counterpart used as a benchmark for analysis. The analysis will examine the four quality of life measures at baseline and 2 years. Each of the variables of interest, Age, BMI, smoking status, education, and race/ethnicity are recorded at baseline. The variable of interest, adherence, is recorded at 2 years. The analyst intends to do backwards selection to identify any associations between quality of life and the variables of interest.
+
+\subsection{Preliminary Results}
+
+```{r table0, echo = FALSE, include = TRUE, warning = FALSE, comment = FALSE, message = FALSE}
+data_table1 = data
+data_table1$vload = log10(data_table1$vload)
+
+for (i in 1:dim(data_table1)[1]) {
+  if (!is.na(data$adh[i])) {
+    if (data$adh[i] == 1 || data$adh[i] == 2) {
+      data_table1$adh[i] = 0
+
+    } else if (data$adh[i] == 3 | data$adh[i] == 4) {
+      data_table1$adh[i] = 1    
+    }
+  }
+}
+
+table1 = CreateTableOne2(vars=c("agg_ment", "agg_phys", "bmi", "vload","leu3n", "age", "adh", "race", "educbas", "smoke"), factorVars = c("adh", "race", "educbas", "smoke"), strata = "hard_drugs", data = data_table1)
+colnames(table1)[1] = "Hard Drugs"
+colnames(table1)[2] = "Absence"
+colnames(table1)[3] = "Presence"
+rownames(table1) = c("n", "Mental Score (Mean ± sd)", "Physical Score (Mean ± sd)", "BMI (Mean ± sd)", "Log Viral Load (Mean ± sd)", "CD4 positive cell count (Mean ± sd)",  "Age (Mean ± sd)", "Adherence (%)", "",  "Race/Ethnicity (%)", "", "", "", "", "", "Education (%)", "", "", "", "", "", "", "Smoker (%)", "", "")
+table1[, 1] = c("", "", "", "", "", "", "", "Not Adherent", "Adherent", "White, non-Hispanic", "White, Hispanic", "Black, non-Hispanic", "American Indian/Alaska Native", "Asian or Pacific Islander", "Other", "8th grade or less", "9, 10, or 11th grade", "12th grade", "some college, no degree", "Bachelor's degree", "some graduate school", "Post-graduate degree", "Never", "Former", "Current")
+kable(table1[,1:3], booktabs = TRUE)
+
+```

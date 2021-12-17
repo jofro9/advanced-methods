@@ -1,0 +1,88 @@
+---
+title: "Project 2, Analysis Plan"
+author: "Joseph Froelicher"
+date: "October 18, 2021"
+output: pdf_document
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../Reports") })
+
+---
+
+\section{Introduction}
+
+The purpose of this analysis is to develop an analysis plan and perform sample size calculations for a research grand involving Alzheimer's disease (AD). The goal of the grant is to examine the relationship between inflammation, AD pathology, and cognitive decline over time. The research team would like to have an analysis plan and sample size justification for two particular aims. The aims are as follows:
+
+1. Evaluate longitudinal associations between markers of peripheral inflammation, cognition, and brain structure in Amnestic Mild Cognitive Impairment (aMCI).
+
+2. Examine how markers of peripheral inflammation impact the relationship between AD pathology and clinical progression of aMCI.
+
+The investigative team is interested in a longitudinal evaluation (from baseline to one year follow-up) of innate immune system-associated mechanisms of cognitive decline in aMCI.
+
+\section{Data}
+
+The data are being collected by the Rocky Mountain Alzheimer's Disease Center (RMADC) at the University of Colorado Anschutz Medical Campus. This study is leveraging the established infrastructure at the University of Colorado-Anschutz Medical Campus RMADC to expand on previous modeling, and contribute to future research through the RMADC. The data is collected by a geriatric neurologist and compiled into a relational database that will be available to the principal investigator and other team members. This data will include demographic infromation, clinical dimentia rating (CDR), geriatric depression scale (GDS), medication use, measures of cardiovascular risk, BMI, blood pressure, history of hypercholesterlomia, APOE genotype, and other diagnostic information.
+
+\section{Sample Size}
+
+Based on existing clinic flow and on enrollment at the RMADC, a reasonable final sample size is projected to be 125 aMCI and 50 HC subjects. The analysis team has been tasked with calculating and confirming the necessary sample size. This is one of the goals of this project. The principal investigator has indicated that we should allow for 10% attrition for this program. Note that these two groups will be combined for analysis. 
+
+We are recruiting from both populations in order to establish a diverse representation of cytokine levels and outcome levels. The principal investigator has also acknowledged that there are several citokine/chemokines, and that there is understanding that a multiple comparison correction may be accounted for in the type 1 error level.
+
+\section(Analysis Plan}
+
+We will develop two models, one for each aim. The first, addressing aim one, will be a linear model to predict change in memory and cortical thickness  from baseline to one year based on cytokines and chemokines, whilst adjusting for age and sex. And the second, addressing aim two part a, will be a linear model to predict change in memory from baseline to one year based on Cortical thickness and amyloid deposition, adjusting for inflammatory markers, age, and sex. Multiple cytokines and chemokines will be tested. To adjust for multiple comparisons, we will use the Benjamin-Hochberg False Discovery Rate (FDR). And addressing aim two part b, will be a linear model to predict change in clinical progression (change in memory) and interactions of amyloid deposition and chemokines and cytokines, or the interactions of cortical thickness and chemokines and cytokines.
+
+\section{Budget}
+
+The final aspect of this consult is to develop a budget justification for each of the necessary job functions, including: data manager, data analyst, senior biostatistician, junior biostatistician and research assistants.
+\newline
+
+```{r budget1, echo=FALSE, include=FALSE, warning=FALSE, comment=FALSE}
+library(kableExtra)
+
+table1 = data.frame(
+  "Position" = c("Senior Biostatistician", "Junior Biostatistician", "Data Manager", "Research Assistan", "Total"),
+  "Salary ($)" = c(115000, 80000, 65000, 31000, ""),
+  "Benefits" = c(0.28*115000, 0.28*80000, 0.28*65000, 13000, ""),
+  "Effort (%)" = c(15, 50, 50, 50, ""),
+  "Cost" = c(11500*1.28*.15, 80000*1.28*.5, 65000*1.28*.5, 31000+13000*.5, NA)
+)
+
+colnames(table1) = c("Position", "Salary ($)", "Benefits", "Effort (%)", "Cost ($)")
+table1[5, 5] = sum(table1[1:4, 5])
+
+```
+
+```{r budget_table1, include=TRUE, echo=FALSE}
+kable(table1, booktabs=TRUE)
+
+```
+
+\textbf{Table 1.} Estimated Cost for years 1 and 5
+\newline
+
+```{r budget2, echo=FALSE, include=FALSE, warning=FALSE}
+library(tidyverse)
+
+table2 = data.frame(
+  "Position" = c("Senior Biostatistician", "Junior Biostatistician", "Data Manager", "Research Assistan", "Total"),
+  "Salary ($)" = c(115000, 80000, 65000, 31000, ""),
+  "Benefits" = c(0.28*115000, 0.28*80000, 0.28*65000, 13000, ""),
+  "Effort (%)" = c(5, 25, 25, 25, ""),
+  "Cost" = c(11500*1.28*.05, 80000*1.28*.25, 65000*1.28*.25, 31000+13000*.25, NA)
+)
+
+colnames(table2) = c("Position", "Salary ($)", "Benefits", "Effort (%)", "Cost ($)")
+table2[5, 5] = sum(table2[1:4, 5])
+total = table2[5, 5] * 3 + table1[5, 5] * 2
+total = format(total, scientific = FALSE, big.mark = ",")
+
+```
+
+```{r budget_table2, include=TRUE, echo=FALSE}
+kable(table2, booktabs=TRUE)
+
+```
+\textbf{Table 1.} Estimated Cost for years 2, 3, and 4
+
+Total estimate budget statistical support budget for 5 years is $`r total`

@@ -1,0 +1,87 @@
+---
+title: "Project 2, Analysis Plan"
+author: "Joseph Froelicher"
+date: "October 18, 2021"
+output: pdf_document
+header-include:
+  - \usepackage{setspace}
+  - \doublespacing
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../Reports") })
+---
+
+\section{Introduction}
+\begin{doublespace}
+The purpose of this analysis is to develop an analysis plan and perform sample size calculations for a research grand involving Alzheimer's disease (AD). The goal of the grant is to examine the relationship between inflammation, AD pathology, and cognitive decline over time. The research team would like to have an analysis plan and sample size justification for two particular aims. The aims are as follows:
+
+1. Evaluate longitudinal associations between markers of peripheral inflammation, cognition, and brain structure in Amnestic Mild Cognitive Impairment (aMCI).
+
+2. Examine how markers of peripheral inflammation impact the relationship between AD pathology and clinical progression of aMCI.
+
+The investigative team is interested in a longitudinal evaluation (from baseline to one year follow-up) of innate immune system-associated mechanisms of cognitive decline in aMCI.
+\end{doublespace}
+\section{Data}
+
+The data are being collected by the Rocky Mountain Alzheimer's Disease Center (RMADC) at the University of Colorado Anschutz Medical Campus. This study is leveraging the established infrastructure at the University of Colorado-Anschutz Medical Campus RMADC to expand on previous modeling, and contribute to future research through the RMADC. The data is collected by a geriatric neurologist and compiled into a relational database that will be available to the principal investigator and other team members. This data will include demographic infromation, clinical dimentia rating (CDR), geriatric depression scale (GDS), medication use, measures of cardiovascular risk, BMI, blood pressure, history of hypercholesterlomia, APOE genotype, and other diagnostic information.
+
+Based on existing clinic flow and on enrollment at the RMADC, a reasonable final sample size is projected to be 125 aMCI and 50 HC subjects. The analysis team has been tasked with calculating and confirming the necessary sample size. This is one of the goals of this project. The principal investigator has indicated that we should allow for 10% attrition for this program. Note that these two groups will be combined for analysis. 
+
+We are recruiting from both populations in order to establish a diverse representation of cytokine levels and outcome levels. The principal investigator has also acknowledged that there are several cytokine/chemokines, and that there is understanding that a multiple comparison correction may be accounted for in the type 1 error level.
+
+\section{Sample Size Justification}
+
+This study was powered initially using the association described in Aim 1., the association between basiline cytokine and chemokine levels, and change in memory from baseline. To detect a correlation of 0.25, using a Bonferroni correction $^1$ to correct for six chemokines and cytokines, and adequate power of $80$%. This sample-size calculation yielded a sample size of 186.
+
+Using a sample size of 186 for Aim 2, where there are 93 in each of the low and high amyloid deposition groups (low and high), and a correlation of 0 for the low amyloid group and a correlation of 0.4 for the high amyloid group, yielded a power of only $58$%. In order to account for $80$% power in Aim 2, the sample size was recalculated. For each of the low- and high-amyloid deposition groups, we now need 138 subjects.
+
+After recalculation, and accounting for $10$% attrition, the final necessary sample size is 304 subjects, where 121 will be HC and 183 will be aMCI.
+
+All sample size and power calculations were done using G * Power. $^2$
+
+\section{Analysis Plan}
+
+We will develop two models, one for each aim. The first, addressing aim one, will be a linear model to predict change in memory and cortical thickness from baseline to one year based on cytokines and chemokines, whilst adjusting for age and sex, and including baseline cytokine and chemokine level as a covariate. Additionally, for aim 1 part b, we are interested in the same linear model, but rather, adjusting for the change in chemokine and cytokine level as a covariate instead or baseline value. And the second, addressing aim two part a, will be a linear model to predict change in memory from baseline to one year based on the interaction of amyloid deposition and cytokine and chemokine level, while adjusting for inflammatory markers, age, and sex. Multiple cytokines and chemokines will be tested. To adjust for multiple comparisons, we will use the Benjamin-Hochberg False Discovery Rate (FDR). And addressing aim two part b, will be a linear model to predict change in clinical progression (change in memory) and interactions of amyloid deposition and chemokines and cytokines, or the interactions of cortical thickness and chemokines and cytokines.
+
+\newpage
+\section{Budget Justification}
+
+
+```{r budget1, echo=FALSE, include=FALSE, warning=FALSE, comment=FALSE}
+library(kableExtra)
+library(tidyverse)
+
+table2 = data.frame(
+  "Position" = c("Senior Biostatistician","Salary ($)", "Benefits", "Effort (%)", "Cost", "Junior Biostatistician", "Salary ($)", "Benefits", "Effort (%)", "Cost", "Data Manager","Salary ($)", "Benefits", "Effort (%)", "Cost", "Research Assistant","Salary ($)", "Benefits", "Effort (%)", "Cost", "Total"),
+  "Year 1" = c("", 115000, 0.28*115000, 15, 115000*1.28*.15, "", 80000, 0.28*80000, 50, 80000*1.28*.50, "", 65000,  0.28*65000, 50, 65000*1.28*.50, "", 31000, 13000, 50, (31000+13000)*.50, ""),
+  "Year 2" = c("", 115000, 0.28*115000, 5, 115000*1.28*.05, "", 80000, 0.28*80000, 25, 80000*1.28*.25, "", 65000,  0.28*65000, 25, 65000*1.28*.25, "", 31000, 13000, 25, (31000+13000)*.25, ""),
+  "Year 3" = c("", 115000, 0.28*115000, 5, 115000*1.28*.05, "", 80000, 0.28*80000, 25, 80000*1.28*.25, "", NA,  NA, NA, NA, "", 31000, 13000, 25, (31000+13000)*.25, ""),
+  "Year 4" = c("", 115000, 0.28*115000, 5, 115000*1.28*.05, "", 80000, 0.28*80000, 25, 80000*1.28*.25, "", NA,  NA, NA, NA, "", 31000, 13000, 25, (31000+13000)*.25, ""),
+  "Year 5" = c("", 115000, 0.28*115000, 15, 115000*1.28*.15, "", 80000, 0.28*80000, 50, 80000*1.28*.50, "",  65000,  0.28*65000, 5, 65000*1.28*.05, "", 31000, 13000, 50, (31000+13000)*.50, "")
+)
+
+table2[21, 2] = sum(as.numeric(c(table2[5, 2], table2[10, 2], table2[15, 2], table2[20, 2])))
+table2[21, 3] = sum(as.numeric(c(table2[5, 3], table2[10, 3], table2[15, 3], table2[20, 3])))
+table2[21, 4] = sum(as.numeric(c(table2[5, 4], table2[10, 4], table2[20, 4])))
+table2[21, 5] = sum(as.numeric(c(table2[5, 5], table2[10, 5], table2[20, 5])))
+table2[21, 6] = sum(as.numeric(c(table2[5, 6], table2[10, 6], table2[15, 6], table2[20, 6])))
+
+colnames(table2) = c("", "Year 1", "Year2", "Year 3", "Year 4", "Year 5")
+total = sum(as.numeric(table2[21,2:6]))
+
+```
+
+The final aspect of this consult is to develop a budget justification for each of the necessary job functions, including: Data Manager, Senior Biostatistician, Junior Biostatistician and Research Assistant. The total estimate 5-year statistical support budget is $`r format(total, scientific=F)`, with larger amounts allocated for the first and last years (Table 1.). The job of the Senior Biostatistician is to be the statistical support team supervisor. In the first year the senior on the team will be attending meetings, and advising the junior and Research Assistant, as well as any potential supervision of the Data Manager. The Junior Biostatistician will be the primary analyst on all analyses, with support from the Research Assistant, and supervision from the Senior Biostatiscian. The Data Manager will require little supervision, and may require some support from the Research Assistant. The data manager is only need for the first two and final years.
+
+Please note that each member of the statistical support team expects to be supported both financially, and academically by inclusion as co-authors in any manuscripts where contributions were made. Manuscript writing will be done primarily by the Junior and Research Assistant, with editorial supervision from the Senior Biostatistician.
+
+```{r budget_table2, include=TRUE, echo=FALSE}
+kable(table2, booktabs=TRUE)
+
+```
+\textbf{Table 1.} Five year statistical support budget justification.
+
+\newpage
+\section{References}
+1. Faul, F., Erdfelder, E., Buchner, A., & Lang, A.-G. (2009). Statistical power analyzes using G * Power 3.1: Tests for correlation and regression analyzes. Behavior Research Methods , 41 , 1149-1160
+
+2. Bonferroni, C. E. (1935). Il calcolo delle assicurazioni su gruppi di teste. Studi in onore del professore salvatore ortu carboni, 13-60.

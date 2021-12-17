@@ -1,0 +1,12 @@
+# Session Data files
+.RData
+# R Data files
+*.RData
+*.rda
+*.rdata
+*.rda
+*.sas7bdat
+*.xport
+*.mdb
+.DS_Store
+

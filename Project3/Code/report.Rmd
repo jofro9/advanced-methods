@@ -1,0 +1,1188 @@
+---
+title: "Project 3, Report"
+author: "Joseph Froelicher"
+date: November 24, 2021
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+header-includes:
+  - \usepackage{setspace}
+  - \usepackage{geometry}
+  - \usepackage{titling}
+  - \pretitle{\begin{center}
+    \includegraphics[width = 6in, height = 5in]{csph_logo.jpg}\LARGE\\}
+  - \posttitle{\end{center}}
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../Reports") })
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+\doublespacing
+\newpage
+\section{Introduction}
+
+Beginning in 1948, subjects were enrolled in a Heart disease study in the city of Framingham, Massachusetts. Our data come from a subset of that data consisting of the years 1956 - 1968. Participants were followed by hospital visits, participant contact and through death certificates for the occurrence of Angina Pectoris, Myocardial Infarction, Heart Failure, and Cerebrovascular disease. Using the 10-year probability of stroke based on different risk profiles, the goal is to identify any risk factors for stroke based on our data. 
+
+Using the provided Framingham heart data, we are interested in determining which risk factors are most associated with increased hazard of having a stroke, determining the 10 year risk for different risk profiles, and analyzing how much temporal change in the associated risk factors, and whether a more sophisticated temporal analysis is needed. Those associated risk factors include four binary categorical variables, presence of cardiovascular disease, smoking status, presence of diabetes, and treatment for hypertension, as well as four continuous risk factors, age, systolic blood pressure, body mass index, and cholesterol level.
+
+\section{Materials and Methods}
+
+\subsection{Data}
+
+Our data consist of $4,434$ participants who's data were collected in 6 year periods from approximately 1956 - 1968. Each participant has anywhere from one to three observations, depending on how many examinations they attended ($11,627$ observations). During the cleaning process, $32$ participants were dropped due to having a previous stroke in the first period, and another $127$ participants were dropped for missing data, so the usable data has $4,275$ participants. The outcome for this analysis is Cerebral Hemorrhage (Stroke), defined by 10 year risk of stroke. The data include information about binary sex (M/F), age, blood pressure, smoking status, medication use, cholesterol, body mass index, and diabetes status. An additional variable was created to indicate whether subjects have previously acknowledged having any of: Angina Pectoris, coronary heart disease, and/or Myocardial infarction. We are interested in the time to event of Cerebral Hemorrhage (stroke), in the first 10 years. To measure this, two additional variables were created, one that measures the time to stroke or 10 years (whichever comes first), and one that indicates either a censoring (0), or a stroke event (1).
+
+\subsection{Descriptive Statistics}
+
+Reported in table 1 are the descriptive statistics for all of the non-missing data at hand. Categorical variables are reported as a percentage of the population, continuous variables are reported with means +/- standard deviation, and the time to stroke variable is reported with the median time +/- inter-quartile range. The table is stratified by stroke for each sex group (male and female).
+
+\subsection{Statistical Methods}
+
+A combination of statistical and exploratory approaches were used to address each of the aims mentioned previously. To assess the 10 year risk for different risk profiles, we are doing a survival analysis using Kaplan-Meier$^1$ curves to examine the risk for each of risk of interest. Each risk factor will have its own Kaplan-Meier curve, with binary risk factors shown with yes and no groups, and continuous variables have a curve for each quartile group (<25%, <50%, <75%, <100%). As well as building a table of survival probabilities for various risk profiles.
+
+We are also fitting a Cox proportional-hazards$^2$ model for males and females separately to determine the risk factors that are associated with stroke. THe investigator was also interested in the interaction of systolic blood pressure and the use of blood pressure medication. Those risk factors will be selected using stepwise backwards selection (removal criterion: p > 0.15). To check the assumptions of Cox proportional-hazards models, the Schoenfeld residuals$^3$ will be checked.
+
+And lastly a table of the risk factors over the first two periods will be provided to demonstrate any changes in the risk factors over the 10 years. Each of these analyses will be stratified by sex, to account for sex differences.
+
+```{r data, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(janitor)
+library(jstable)
+library(kableExtra)
+library(naniar)
+library(survival)
+library(survminer)
+library(tab)
+library(tidyr)
+library(tidyverse)
+
+data = read.csv('../data_raw/frmgham2.csv') %>% clean_names()
+data_period2 = data.frame(data)
+
+data$timestrk10yr = vector("double", length = dim(data)[1])
+data$strk10yr = vector("double", length = dim(data)[1])
+
+# create stroke and time stroke variables
+for (i in 1:dim(data)[1]) {
+  data$timestrk10yr[i] = min(data$timestrk[i], data$timedth[i], 3650)
+  
+  if (data$timestrk[i] > 3650) {
+    data$strk10yr[i] = 0
+
+  } else if (data$stroke[i] == 1 & data$timestrk[i] <= 3650) {
+    data$strk10yr[i] = 1
+  }
+}
+
+# get all participants who didn't have a previous stroke in period 1 and observations that are in period 1
+data = data[data$prevstrk == 0 & data$period == 1,]
+
+# create cvd variable
+data$cvd = vector("double", length = dim(data)[1])
+data$cvd = 0
+
+for (i in 1:dim(data)[1]) {
+  if (data$prevap[i] == 1 | data$prevchd[i] == 1 | data$prevmi[i] == 1) {
+    data$cvd[i] = 1
+  }
+}
+
+# get only necessary variables
+data = data[, c("age", "sysbp", "bpmeds", "cursmoke", "totchol", "bmi", "diabetes", "cvd", "sex", "timestrk10yr", "strk10yr")]
+
+# throw out NA's
+for (i in 1:dim(data)[2]) {
+  data = data[!is.na(data[, i]),]
+}
+
+# sample size of stroke group
+percent_stroke = dim(data[data$strk10yr == 1, ])[1] / dim(data)[1] * 100
+num_stroke = dim(data[data$strk10yr == 1, ])[1]
+
+# stratify by sex
+data_males = data[data$sex == 1,]
+data_females = data[data$sex == 2,]
+
+```
+
+```{r analysis, echo=FALSE, include=FALSE}
+# female model selection
+model_full_females = coxph(
+  Surv(time=timestrk10yr, event=strk10yr) ~ age + sysbp*bpmeds + cursmoke + totchol + bmi + diabetes + cvd,
+  data=data_females
+)
+femals_full_summary = summary(model_full_females)
+
+# Backward selection
+# use p-vlaue approach by passing into k argument in step
+k = qchisq(0.15, 1, lower.tail=FALSE)
+
+model_final_females = step(model_full_females, direction="backward", k = k)
+females_final_summary = summary(model_final_females)
+
+# male model selection
+model_full_males = coxph(
+  Surv(time=timestrk10yr, event=strk10yr) ~ age + sysbp*bpmeds + cursmoke + totchol + bmi + diabetes + cvd,
+  data=data_males
+)
+males_full_summary = summary(model_full_males)
+
+# Backward selection
+# use p-value approach by passing into k argument in step
+k = qchisq(0.15, 1, lower.tail=FALSE)
+
+model_final_males = step(model_full_males, direction="backward", k = k)
+# summary(model_final_males)
+
+# bpmeds estimate is not right, remove interaction
+model_full_males = coxph(
+  Surv(time=timestrk10yr, event=strk10yr) ~ age + sysbp + bpmeds + cursmoke + totchol + bmi + diabetes + cvd,
+  data=data_males
+)
+
+model_final_males = step(model_full_males, direction="backward", k = k)
+males_final_summary = summary(model_final_males)
+
+```
+\section{Results}
+
+As previously mention, the descriptive statistics are reported in table 1. In our data there were `r round(percent_stroke, 2)`% who had a stroke in the 10 year period (n = `r num_stroke`).
+
+Provided in figures 1 & 2 are the Kaplan-Meier curves for men and women respectively, for each of the risk factors of concern (listed above). On the right are the continuous risk factors, where participants were grouped based on quartiles, and on the left are binary risk factors. For females, presence of cardiovascular disease, use of hypertensive medication, presence of diabetes, old age, high blood pressure, and high body mass index appear to be reducing the survival probability the most of all the risk factors. For males, use of hypertensive medication, presence of diabetes, increasing age, and high blood pressure appear to be reducing the survival probability the most of all the risk factors.
+
+The results of the stepwise backwards model selection for the Cox proportional hazards models for both males and females are reported in table 2. For \textit{males}, all of age, systolic blood pressure, smoking, and diabetes were found to be significant predictors. Age is accounting for a 6.6% (95% CI: [2.7%, 10.7%], p=0.001) increase in the hazard ratio for stroke. Systolic blood pressure is accounting for a 3.4% (95% CI: [2.2%, 4.6%], p<0.001) increase in the hazard ratio for stroke. Smoking is accounting for a 91.9% (95% CI: [3.4%, 256.4%], p=0.039) increase in the hazard ratio for stroke. Diabetes is accounting for a 379.9% (95% CI: 109.6%, 1098.9%], p<.001) increase in the hazard ratio for stroke. For \textit{females}, only age and systolic blood pressure were selected as significant predictors the Cox proportional hazards model for stroke. Age is accounting for a 7.4% (95% CI: [3.4%, 11.6%], p<0.001) increase in the hazard ratio for stroke. Systolic blood pressure is accounting for a 2.6% (95% CI: [1.8%, 3.5%], p<0.001) increase in the hazard ratio for stroke.
+
+Reported in table 3 are the 10-year risk profiles for various risk profiles of interest, based on a Cox proportional hazards model, for ages 55, 60, 65, 70, 75, 80, and 85 years. The risk factors (covariates) included in table 3 are all significant predictors, in addition to the investigator specified risk factors of interest, for our risk profiles.
+
+Lastly, shown in table 4 are the changes from period 1 to period 2 of each of the risk factors of interest in this analysis. As to be expected, age is increasing, this is not of note. Continuous variables that are increasing over time that may be of note are: systolic blood pressure and cholesterol, and this is true for both males and females. The only categorical variable that changes over the two periods is smoking. There are more smokers in the data during period 2 than there are in period 1.
+
+\section{Discussion}
+
+Throughout this analysis, it was demonstrated that while graphically appearing significant, some risk factors were not necessarily statistically significant in the prediction of the hazard of stroke. The most notable risk factor for stroke for both males and females is age, and this was to be expected. With higher age, is higher risk for stroke. Some other variables, like systolic blood pressure and smoking were also statistically significant in the prediction of the hazard of stroke. 
+
+For future analyses, we may be interested in examining age or blood pressure as a confounder, or mediator, for these two variables may be interacting. Seeing as smoking was increasing over time and was also a significant predictor for males, further analyses may want to examine other coping mechanisms that persons who have experienced a stroke use. This is an interesting finding and warrants further analysis.
+
+Lastly, in response to the investigators interest in the risk factors change over time, there was enough change over time to warrant examining a more sophisticated temporal model for these data. Some of the variables in period 2 are different than in period 1, and thus there may be need for better modeling.
+
+\section{Limitations}
+
+This study was limited primarily by missing data and partially as a result of that small sample sizes. The were low counts of strokes, and because the data were stratified by sex, the number of strokes was even smaller. Additionally, as was mentioned, some of the variables may be changing over time, and this would indicate the need for a temporal model. Take particular note of smoking status for men. This was a statistically significant predictor, and was also higher in period 2 for men than in was in period 1.
+
+\section{Reproducibility}
+
+Each of the analyses for all aims were performed in `R 4.1.1`.
+
+Code for this analysis is availables from `https://github.com/BIOS6624-UCD/bios6624-JoeFroelicher/project3`, under the branch `project3`. Special note to `@erikaesquinca` for her contributions to the risk over time, and `@ehccooper` for modeling and table making help. These users are cited within the code. Thank you to `@benjamin643` for the use of the `surv_fit()` wrapper to `survfit()`.
+
+\newpage
+\singlespacing
+
+```{r km_curves, echo=FALSE, include=FALSE}
+data_males = data[data$sex == 1,]
+data_females = data[data$sex == 2,]
+max_time = max(data_females$timestrk10yr)
+
+# variables that need km curves: age, sysbp, bpmeds, cursmoke, totchol, bmi, diabetes, cvd
+
+###########
+# females #
+###########
+
+# categorical variables
+
+### blood pressure meds ###
+female_bp = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ bpmeds, data=data_females
+)
+
+plot_bp_f = ggsurvplot(
+  female_bp,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max_time),
+  ylim = c(3/4, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Hypertension Medication",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### smoker ###
+female_smoke = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cursmoke, data=data_females
+)
+
+plot_smoke_f = ggsurvplot(
+  female_smoke,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Smoking Status",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### diabetes ###
+female_diabetes = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ diabetes, data=data_females
+)
+
+plot_diabetes_f = ggsurvplot(
+  female_diabetes,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females$timestrk10yr)),
+  ylim = c(0.85, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Diabetes",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### cardio-vascular disease ###
+female_cvd = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cvd, data=data_females
+)
+
+plot_cvd_f = ggsurvplot(
+  female_cvd,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females$timestrk10yr)),
+  ylim = c(0.85, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Cardiovascular Disease",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+# continuous variables
+data_females_plot = data.frame(data_females)
+data_females_plot$cat_sysbp = vector("double", dim(data_females_plot)[1])
+data_females_plot$cat_chol = vector("double", dim(data_females_plot)[1])
+data_females_plot$cat_bmi = vector("double", dim(data_females_plot)[1])
+data_females_plot$cat_age = vector("double", dim(data_females_plot)[1])
+
+
+for (i in 1:dim(data_females_plot)[1]) {
+  # make age levels
+  if (data_females_plot$age[i] < quantile(data_females_plot$age)[2]) {
+    data_females_plot$cat_age[i] = 1
+
+  } else if (data_females_plot$age[i] < quantile(data_females_plot$age)[3]) {
+    data_females_plot$cat_age[i] = 2
+
+  } else if (data_females_plot$age[i] < quantile(data_females_plot$age)[4]) {
+    data_females_plot$cat_age[i] = 3
+
+  } else {
+    data_females_plot$cat_age[i] = 4
+  }
+
+  # make bp levels
+  if (data_females_plot$sysbp[i] < quantile(data_females_plot$sysbp)[2]) {
+    data_females_plot$cat_sysbp[i] = 1
+
+  } else if (data_females_plot$sysbp[i] < quantile(data_females_plot$sysbp)[3]) {
+    data_females_plot$cat_sysbp[i] = 2
+
+  } else if (data_females_plot$sysbp[i] < quantile(data_females_plot$sysbp)[4]) {
+    data_females_plot$cat_sysbp[i] = 3
+
+  } else {
+    data_females_plot$cat_sysbp[i] = 4
+  }
+
+  # make bmi levels
+  if (data_females_plot$bmi[i] < quantile(data_females_plot$bmi)[2]) {
+    data_females_plot$cat_bmi[i] = 1
+
+  } else if (data_females_plot$bmi[i] < quantile(data_females_plot$bmi)[3]) {
+    data_females_plot$cat_bmi[i] = 2
+
+  } else if (data_females_plot$bmi[i] < quantile(data_females_plot$bmi)[4]) {
+    data_females_plot$cat_bmi[i] = 3
+
+  } else {
+    data_females_plot$cat_bmi[i] = 4
+  }
+
+  # make cholesterol levels
+  if (data_females_plot$totchol[i] < quantile(data_females_plot$totchol)[2]) {
+    data_females_plot$cat_chol[i] = 1
+
+  } else if (data_females_plot$totchol[i] < quantile(data_females_plot$totchol)[3]) {
+    data_females_plot$cat_chol[i] = 2
+
+  } else if (data_females_plot$totchol[i] < quantile(data_females_plot$totchol)[4]) {
+    data_females_plot$cat_chol[i] = 3
+
+  } else {
+    data_females_plot$cat_chol[i] = 4
+  }
+}
+
+### age ###
+female_age = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_age, data=data_females_plot
+)
+
+plot_age_f = ggsurvplot(
+  female_age,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females_plot$timestrk10yr)),
+  ylim = c(.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Age",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### chol ###
+female_chol = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_chol, data=data_females_plot
+)
+
+plot_chol_f = ggsurvplot(
+  female_chol,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females_plot$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Cholesterol",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### bmi ###
+female_bmi = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_bmi, data=data_females_plot
+)
+
+plot_bmi_f = ggsurvplot(
+  female_bmi,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females_plot$timestrk10yr)),
+  ylim = c(0.925, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Body-Mass Index",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### bmi ###
+female_sysbp = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_sysbp, data=data_females_plot
+)
+
+plot_sysbp_f = ggsurvplot(
+  female_sysbp,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_females_plot$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Systolic Blood-Pressure",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+# Panel the KM curves into 1 figure
+plots_f = list(
+  plot_cvd_f, plot_bp_f,
+  plot_smoke_f, plot_diabetes_f,
+  plot_age_f, plot_sysbp_f,
+  plot_chol_f, plot_bmi_f
+)
+
+###########
+#  males  #
+###########
+
+# categorical variables
+
+### blood pressure meds ###
+male_bp = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ bpmeds, data=data_males
+)
+
+plot_bp_m = ggsurvplot(
+  male_bp,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max_time),
+  ylim = c(3/4, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Hypertension Medication",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### smoker ###
+male_smoke = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cursmoke, data=data_males
+)
+
+plot_smoke_m = ggsurvplot(
+  male_smoke,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Smoking Status",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### diabetes ###
+male_diabetes = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ diabetes, data=data_males
+)
+
+plot_diabetes_m = ggsurvplot(
+  male_diabetes,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males$timestrk10yr)),
+  ylim = c(0.80, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Diabetes",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### cardio-vascular disease ###
+male_cvd = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cvd, data=data_males
+)
+
+plot_cvd_m = ggsurvplot(
+  male_cvd,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males$timestrk10yr)),
+  ylim = c(0.85, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("No", "Yes"),
+  font.title=c(8,"bold","black"),
+  title="Cardiovascular Disease",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+# continuous variables
+data_males_plot = data.frame(data_males)
+data_males_plot$cat_sysbp = vector("double", dim(data_males_plot)[1])
+data_males_plot$cat_chol = vector("double", dim(data_males_plot)[1])
+data_males_plot$cat_bmi = vector("double", dim(data_males_plot)[1])
+data_males_plot$cat_age = vector("double", dim(data_males_plot)[1])
+
+
+for (i in 1:dim(data_males_plot)[1]) {
+  # make age levels
+  if (data_males_plot$age[i] < quantile(data_males_plot$age)[2]) {
+    data_males_plot$cat_age[i] = 1
+
+  } else if (data_males_plot$age[i] < quantile(data_males_plot$age)[3]) {
+    data_males_plot$cat_age[i] = 2
+
+  } else if (data_males_plot$age[i] < quantile(data_males_plot$age)[4]) {
+    data_males_plot$cat_age[i] = 3
+
+  } else {
+    data_males_plot$cat_age[i] = 4
+  }
+
+  # make bp levels
+  if (data_males_plot$sysbp[i] < quantile(data_males_plot$sysbp)[2]) {
+    data_males_plot$cat_sysbp[i] = 1
+
+  } else if (data_males_plot$sysbp[i] < quantile(data_males_plot$sysbp)[3]) {
+    data_males_plot$cat_sysbp[i] = 2
+
+  } else if (data_males_plot$sysbp[i] < quantile(data_males_plot$sysbp)[4]) {
+    data_males_plot$cat_sysbp[i] = 3
+
+  } else {
+    data_males_plot$cat_sysbp[i] = 4
+  }
+
+  # make bmi levels
+  if (data_males_plot$bmi[i] < quantile(data_males_plot$bmi)[2]) {
+    data_males_plot$cat_bmi[i] = 1
+
+  } else if (data_males_plot$bmi[i] < quantile(data_males_plot$bmi)[3]) {
+    data_males_plot$cat_bmi[i] = 2
+
+  } else if (data_males_plot$bmi[i] < quantile(data_males_plot$bmi)[4]) {
+    data_males_plot$cat_bmi[i] = 3
+
+  } else {
+    data_males_plot$cat_bmi[i] = 4
+  }
+
+  # make cholesterol levels
+  if (data_males_plot$totchol[i] < quantile(data_males_plot$totchol)[2]) {
+    data_males_plot$cat_chol[i] = 1
+
+  } else if (data_males_plot$totchol[i] < quantile(data_males_plot$totchol)[3]) {
+    data_males_plot$cat_chol[i] = 2
+
+  } else if (data_males_plot$totchol[i] < quantile(data_males_plot$totchol)[4]) {
+    data_males_plot$cat_chol[i] = 3
+
+  } else {
+    data_males_plot$cat_chol[i] = 4
+  }
+}
+
+### age ###
+male_age = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_age, data=data_males_plot
+)
+
+plot_age_m = ggsurvplot(
+  male_age,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males_plot$timestrk10yr)),
+  ylim = c(.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Age",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### chol ###
+male_chol = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_chol, data=data_males_plot
+)
+
+plot_chol_m = ggsurvplot(
+  male_chol,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males_plot$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Cholesterol",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### bmi ###
+male_bmi = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_bmi, data=data_males_plot
+)
+
+plot_bmi_m = ggsurvplot(
+  male_bmi,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males_plot$timestrk10yr)),
+  ylim = c(0.925, 1),
+  legend="right",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Body-Mass Index",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+### bmi ###
+male_sysbp = surv_fit(
+  Surv(time=timestrk10yr, event=strk10yr) ~ cat_sysbp, data=data_males_plot
+)
+
+plot_sysbp_m = ggsurvplot(
+  male_sysbp,
+  conf.int = F,
+  censor = F,
+  xlim = c(0, max(data_males_plot$timestrk10yr)),
+  ylim = c(0.9, 1),
+  legend="none",
+  legend.title="",
+  legend.labs=c("25%", "50%", "75%", "100%"),
+  font.title=c(8,"bold","black"),
+  title="Systolic Blood-Pressure",
+  xlab=NULL,
+  ylab=NULL,
+  font.tickslab=c(8)
+)
+
+# Panel the KM curves into 1 figure
+plots_m = list(
+  plot_cvd_m, plot_bp_m,
+  plot_smoke_m, plot_diabetes_m,
+  plot_age_m, plot_sysbp_m,
+  plot_chol_m, plot_bmi_m
+)
+
+```
+
+\newpage
+\section{Tables and Figures}
+
+```{r table1, echo=FALSE, include=FALSE, guide="none", comment=FALSE, warning=FALSE}
+
+# create table 1
+table1_data_males = data.frame(data_males)
+table1_data_females = data.frame(data_females)
+
+vars = colnames(table1_data_males)
+cat_vars = vars[c(3, 4, 7, 8, 9, 11)]
+
+table1_males = CreateTableOne2(table1_data_males, strata = "strk10yr", vars = vars, factorVars = cat_vars)
+table1_females = CreateTableOne2(table1_data_females, strata = "strk10yr", vars = vars, factorVars = cat_vars)
+
+table1 = cbind(table1_females[, 1:3], table1_males[, 2:3])
+
+# col and row names
+colnames(table1) = c("", "Female", "", "Male", "")
+rownames(table1) = c("n", "Age (mean ± sd)", "Sys BP  (mean ± sd)", "BP Meds (%)", "", "Smoker (%)", "", "Chol  (mean ± sd)", "bmi  (mean ± sd)", "Diabeters (%)", "", "cvd (%)", "", "Sex (%)", "Time to Event (median ± IQR)", "Stroke (%)", "")
+
+# change to median for time to event
+table1[15, ] = c(
+  "",
+  paste(median(data_females[data_females$strk10yr == 0, ]$timestrk10yr), "±", IQR(data_females[data_females$strk10yr == 0, ]$timestrk10yr)),
+  paste(median(data_females[data_females$strk10yr == 1, ]$timestrk10yr), "±", IQR(data_females[data_females$strk10yr == 1, ]$timestrk10yr)),
+  paste(median(data_males[data_males$strk10yr == 0, ]$timestrk10yr), "±", IQR(data_males[data_males$strk10yr == 0, ]$timestrk10yr)),
+  paste(median(data_males[data_males$strk10yr == 1, ]$timestrk10yr), "±", IQR(data_males[data_males$strk10yr == 1, ]$timestrk10yr))
+)
+
+# clean up datble
+table1 = table1[1:(dim(table1)[1] - 2), ]
+table1 = table1[-14, ]
+table1[, 1] = c("", "", "", "No", "Yes", "No", "Yes", "", "", "No", "Yes", "No", "Yes", "")
+table1 = rbind(c("", "Censor", "Stroke", "Censor", "Stroke"), table1)
+
+```
+
+```{r figure1, echo=FALSE, include=TRUE, warning=FALSE}
+arrange_ggsurvplots(
+  plots_f, 
+  print = TRUE,
+  title = "Female Kaplan-Meier Curves",
+  ncol = 2,
+  nrow = 4,
+  surv.plot.height = NULL,
+  risk.table.height = NULL,
+  ncensor.plot.height = NULL,
+  common.legend = FALSE
+)
+
+```
+\textbf{Figure 1.} Female Kaplan-Meier Curves for each variable of interest, categorical variables on the left, and continuous on the right, represented in quantile groups, time in days on the independent axis, survival probability on the dependent axis..
+\newpage
+
+```{r figure2, echo=FALSE, include=TRUE, warning=FALSE}
+arrange_ggsurvplots(
+  plots_m, 
+  print = TRUE,
+  title = "Male Kaplan-Meier Curves",
+  ncol = 2,
+  nrow = 4,
+  surv.plot.height = NULL,
+  risk.table.height = NULL,
+  ncensor.plot.height = NULL,
+  common.legend = FALSE
+)
+
+```
+\textbf{Figure 2.} Male Kaplan-Meier Curves for each variable of interest, categorical variables on the left, and continuous on the right, represented in quantile groups, time in days on the independent axis, survival probability on the dependent axis..
+\newpage
+
+```{r table_output, echo=FALSE, include=TRUE, warning=FALSE}
+# output table
+kable(table1, booktabs=T)
+
+```
+\textbf{Table 1.} Descriptive Statistics for the Framingham heart data. Continuous variables have means reported, categorical variables have counts and percentages reported.
+\newpage
+
+\newgeometry{left=0.5cm}
+
+```{r table2, echo=FALSE, include=TRUE}
+# output table
+m = cbind(males_final_summary$coefficients, males_final_summary$conf.int[, 3:4])[, -4]
+f = rbind(cbind(females_final_summary$coefficients, females_final_summary$conf.int[, 3:4])[, -4], vector("double", dim(m)[2]), vector("double", dim(m)[2]))
+f[3:4, ] = NA
+
+table2 = cbind(m, f)
+
+r = colnames(table2)
+table2 = round(table2, 3)
+table2 = rbind(r, table2)
+colnames(table2) = c("Males", "", "", "", "", "", "Females", "", "", "", "", "")
+table2[3, 4] = "<0.001"
+table2[2, 10] = "<0.001"
+table2[3, 10] = "<0.001"
+table2[5, 4] = "<0.001"
+table2[1, 2] = "HR"
+table2[1, 8] = "HR"
+table2[1, 4] = "P-value"
+table2[1, 10] = "P-value"
+rownames(table2) = c("", "Age", "SYS BP", "Smoke", "Diabetes")
+
+kable(table2, booktabs=T)
+
+
+```
+\textbf{Table 2.} Results of Cox proportional hazards backwards stepwise model selection for males and females, with raw and exponentiated coefficients. NA values represent risk factors not significant in the Cox P-H model for females.
+\restoregeometry
+
+\newpage
+
+\newgeometry{left=0.1cm}
+
+```{r, echo=FALSE, include=FALSE}
+###########################################
+# The following code is curtesy of emily cooper! 
+# #########################################
+
+#### For males ####
+
+# all remaining covariates are significant or included in PI-specified risk profiles --> so this is our final model
+surv_m = coxph(
+  Surv(time=timestrk10yr, event=strk10yr) ~ age + sysbp + bpmeds + cursmoke + diabetes + cvd,
+  data=data_males
+)
+
+## 10-year risks for "average" male risk profiles
+newdata_males1 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+   "sysbp"=rep(mean(data_males$sysbp),7),
+   "bpmeds"=rep(mean(data_males$bpmeds),7),
+   "cursmoke"=rep(mean(data_males$cursmoke),7),
+   "diabetes"=rep(mean(data_males$diabetes),7),
+   "cvd"=rep(mean(data_males$cvd),7)
+) # create mock data for "average" male at different ages
+
+# survival probability at 10-years for "average" male at different ages
+col1_m = c(1 - tail(survfit(surv_m, newdata=newdata_males1)$surv, 1))
+
+newdata_males2 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(mean(data_males$bpmeds),7),
+  "cursmoke"=rep(1,7), # change smoking status to yes (=1)
+  "diabetes"=rep(mean(data_males$diabetes),7),
+  "cvd"=rep(mean(data_males$cvd),7)
+) # create mock data for "average" male at different ages
+
+col2_m = c(1 - tail(survfit(surv_m, newdata=newdata_males2)$surv, 1)) #survival probability at 10-years for "average" male at different ages
+
+newdata_males3 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(1,7), #with treated hypertension
+  "cursmoke"=rep(mean(data_males$cursmoke),7), 
+  "diabetes"=rep(mean(data_males$diabetes),7),
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col3_m = c(1 - tail(survfit(surv_m, newdata=newdata_males3)$surv, 1)) 
+
+newdata_males4 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(0,7), #with untreated hypertension
+  "cursmoke"=rep(mean(data_males$cursmoke),7), 
+  "diabetes"=rep(mean(data_males$diabetes),7),
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col4_m = c(1 - tail(survfit(surv_m, newdata=newdata_males4)$surv, 1)) 
+
+newdata_males5 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(mean(data_males$bpmeds),7), 
+  "cursmoke"=rep(mean(data_males$cursmoke),7), 
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col5_m = c(1 - tail(survfit(surv_m, newdata=newdata_males5)$surv, 1)) 
+
+newdata_males6 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(mean(data_males$bpmeds),7), 
+  "cursmoke"=rep(mean(data_males$cursmoke),7), 
+  "diabetes"=rep(mean(data_males$diabetes),7), 
+  "cvd"=rep(1,7)
+) #with cvd
+
+col6_m = c(1 - tail(survfit(surv_m, newdata=newdata_males6)$surv, 1)) 
+
+newdata_males7 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(mean(data_males$bpmeds),7), 
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col7_m = c(1 - tail(survfit(surv_m, newdata=newdata_males7)$surv, 1)) 
+
+newdata_males8 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(mean(data_males$bpmeds),7), 
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(mean(data_males$diabetes),7), 
+  "cvd"=rep(1,7)
+) #with cvd
+
+col8_m = c(1 - tail(survfit(surv_m, newdata=newdata_males8)$surv, 1)) 
+
+newdata_males9 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(1,7), #with treated hypertension
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(mean(data_males$diabetes),7), 
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col9_m = c(1 - tail(survfit(surv_m, newdata=newdata_males9)$surv, 1)) 
+
+newdata_males10 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(0,7), #with untreated hypertension
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(mean(data_males$diabetes),7), 
+  "cvd"=rep(mean(data_males$cvd),7)
+)
+
+col10_m = c(1 - tail(survfit(surv_m, newdata=newdata_males10)$surv, 1)) 
+
+newdata_males11 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_males$sysbp),7),
+  "bpmeds"=rep(0,7), #with untreated hypertension
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(1,7)
+) #with cvd
+
+col11_m = c(1 - tail(survfit(surv_m, newdata=newdata_males11)$surv, 1)) 
+
+risks_m = cbind(
+  col1_m, col2_m, col3_m, col4_m, col5_m, col6_m,
+  col7_m, col8_m, col9_m, col10_m, col11_m
+)
+
+risks_m = apply(
+  risks_m,
+  2, 
+  function(x){
+    format(x, digits=2)
+  }
+)
+
+#### For females ####
+
+# all remaining covariates are significant or included in PI-specified risk profiles --> so this is our final model for risk profiles
+surv_f = coxph(
+  Surv(time=timestrk10yr, event=strk10yr)~ age + sysbp + bpmeds + cursmoke + diabetes + cvd,
+  data=data_females
+)
+
+# 10-year risk profiles for females
+newdata_females1 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7),
+  "cursmoke"=rep(mean(data_females$cursmoke),7),
+  "diabetes"=rep(mean(data_females$diabetes),7),
+  "cvd"=rep(mean(data_females$cvd),7)
+) 
+
+col1_f = c(1 - tail(survfit(surv_f, newdata=newdata_females1)$surv, 1)) 
+
+newdata_females2 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7),
+  "cursmoke"=rep(1,7), #change smoking status to yes (=1)
+  "diabetes"=rep(mean(data_females$diabetes),7),
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col2_f = c(1 - tail(survfit(surv_f, newdata=newdata_females2)$surv, 1)) 
+
+newdata_females3 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(1,7), #with treated hypertension
+  "cursmoke"=rep(mean(data_females$cursmoke),7), 
+  "diabetes"=rep(mean(data_females$diabetes),7),
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col3_f = c(1 - tail(survfit(surv_f, newdata=newdata_females3)$surv, 1)) 
+
+newdata_females4 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(0,7), #with untreated hypertension
+  "cursmoke"=rep(mean(data_females$cursmoke),7), 
+  "diabetes"=rep(mean(data_females$diabetes),7),
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col4_f = c(1 - tail(survfit(surv_f, newdata=newdata_females4)$surv, 1)) 
+
+newdata_females5 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7), 
+  "cursmoke"=rep(mean(data_females$cursmoke),7), 
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col5_f = c(1 - tail(survfit(surv_f, newdata=newdata_females5)$surv, 1)) 
+
+newdata_females6 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7), 
+  "cursmoke"=rep(mean(data_females$cursmoke),7), 
+  "diabetes"=rep(mean(data_females$diabetes),7), 
+  "cvd"=rep(1,7)
+) #with cvd
+
+col6_f = c(1 - tail(survfit(surv_f, newdata=newdata_females6)$surv, 1)) 
+
+newdata_females7 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7), 
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col7_f = c(1 - tail(survfit(surv_f, newdata=newdata_females7)$surv, 1)) 
+
+newdata_females8 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(mean(data_females$bpmeds),7), 
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(mean(data_females$diabetes),7), 
+  "cvd"=rep(1,7)
+) #with cvd
+
+col8_f = c(1 - tail(survfit(surv_f, newdata=newdata_females8)$surv, 1)) 
+
+newdata_females9 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(1,7), #with treated hypertension
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(mean(data_females$diabetes),7), 
+  "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col9_f = c(1 - tail(survfit(surv_f, newdata=newdata_females9)$surv, 1)) 
+
+newdata_females10 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+   "sysbp"=rep(mean(data_females$sysbp),7),
+   "bpmeds"=rep(0,7), #with untreated hypertension
+   "cursmoke"=rep(1,7), #with smoking
+   "diabetes"=rep(mean(data_females$diabetes),7), 
+   "cvd"=rep(mean(data_females$cvd),7)
+)
+
+col10_f = c(1 - tail(survfit(surv_f, newdata=newdata_females10)$surv, 1)) 
+
+newdata_females11 = data.frame(
+  "age"=c(55,60,65,70,75,80,85),
+  "sysbp"=rep(mean(data_females$sysbp),7),
+  "bpmeds"=rep(0,7), #with untreated hypertension
+  "cursmoke"=rep(1,7), #with smoking
+  "diabetes"=rep(1,7), #with diabetes
+  "cvd"=rep(1,7)
+) #with cvd
+
+col11_f = c(1 - tail(survfit(surv_f, newdata=newdata_females11)$surv, 1)) 
+
+risks_f = cbind(
+  col1_f, col2_f, col3_f, col4_f, col5_f, col6_f,
+  col7_f, col8_f, col9_f, col10_f, col11_f
+)
+
+risks_f = apply(
+  risks_f,
+  2,
+  function(x){
+    format(x, digits=2)
+  }
+)
+
+#### Table 4: 10-year risk by sex ####
+risks = data.frame(
+  t(rbind(risks_m, risks_f))
+) #combine risk probs for males and females
+
+colnames(risks) = c(
+  "55","60","65","70","75","80","85", "55","60","65","70","75","80","85"
+)
+
+rownames(risks) = c(
+  "Average male/female", "smoking", "treated hypertension",
+  "untreated hypertension", "diabetes", "cvd", "smoking and diabetes",
+  "smoking and cvd", "smk and trt hyp", "smk and unt hyp",
+  "smk, unt hyp, dbts, cvd"
+)
+
+```
+
+```{r table3, echo=FALSE, include=TRUE}
+options(width = 300)
+
+risks %>% kable() %>% kableExtra::kable_classic(full_width = F) %>%
+  kable_styling(bootstrap_options="striped") %>% add_header_above(c(" " = 1, "Males"=7, "Females"=7)) %>%
+  kableExtra::column_spec(8, extra_css = "border-right: 1px solid")
+
+```
+\textbf{Table 3.} 10 year risk profiles for various risk profiles of interest, based on Cox proportional hazards model, including different ages for males and females.
+\restoregeometry
+
+```{r table4, echo=FALSE, include=FALSE, warning=FALSE}
+# this code courtesy of erika esquinca
+
+# Only want to look at period == 1 or period ==2 
+data_table4 = data_period2 %>%
+  filter(period == 1 | period == 2) %>%
+  mutate(period = factor(
+    period,
+    levels=c(1,2),
+    labels = c("Period 1", "Period 2"))
+  )
+
+data$cvd = vector("double", length = dim(data)[1])
+data$cvd = 0
+
+for (i in 1:dim(data_table4)[1]) {
+  if (data_table4$prevap[i] == 1 | data_table4$prevchd[i] == 1 | data_table4$prevmi[i] == 1) {
+    data_table4$cvd[i] = 1
+  }
+}
+
+data_table4 = data_table4[, c("age", "sysbp", "bpmeds", "cursmoke", "totchol", "bmi", "diabetes", "cvd", "sex", "period")]
+
+
+var_label_list = list(
+  diabetes = "Diabetes",
+  sysbp = "SBP (mmHg)",
+  bpmeds = "BP Meds",
+  cursmoke = "Smoker?",
+  age = "Age (years)",
+  bmi = "BMI",
+  sex = "Sex",
+  cvd = "Cardiovascular Risk Factors?",
+  totchol = "Total Cholesterol (mg/dL)"
+)
+
+vars = colnames(data_table4)
+cat_vars = vars[c(3, 4, 7, 8, 9)]
+
+table4_males = CreateTableOne2(data_table4[data_table4$sex == 1, ], strata = "period", vars = vars, factorVars = cat_vars)[1:14, 2:3]
+table4_females = CreateTableOne2(data_table4[data_table4$sex == 2, ], strata = "period", vars = vars, factorVars = cat_vars)[1:14, 1:3]
+table4 = cbind(table4_females, table4_males)
+table4 = rbind(colnames(table4), table4)
+colnames(table4) = c("", "Females", "", "Males", "")
+table4 = table4[-(dim(table4)[1]),]
+
+```
+
+```{r table4_output, echo=FALSE, include=TRUE}
+kable(table4, booktabs=T)
+
+```
+\textbf{Table 4.} Change in risk factors over the 10 year risk period (periods 1 and 2).
+
+\newpage
+
+\section{References}
+
+1. Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American statistical association, 53(282), 457-481.
+
+2. Cox, D. R., & Oakes, D. (2018). Analysis of survival data. Chapman and Hall/CRC.
+
+3. Schoenfeld, D. (1982). Partial residuals for the proportional hazards regression model. Biometrika, 69(1), 239-241.

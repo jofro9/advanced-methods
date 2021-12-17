@@ -1,0 +1,333 @@
+---
+title: "Project 1"
+author: "Joseph Froelicher"
+date: "October 11, 2021"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+header-includes:
+  - \usepackage{setspace}
+  - \usepackage{titling}
+  - \pretitle{\begin{center}
+    \includegraphics[width = 6in, height = 5in]{csph_logo.jpg}\LARGE\\}
+  - \posttitle{\end{center}}
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../Reports") })
+
+---
+
+```{r setup, echo = FALSE, include = FALSE, warning = FALSE}
+library(janitor)
+library(jstable)
+library(kableExtra)
+library(tidyverse)
+
+data = read.csv("../data_raw/hiv_6624_final.csv") %>% clean_names()
+
+drop = c(
+  'x', 'hashv', 'hashf', 'income', 'hbp',
+  'diab', 'liv34', 'kid', 'frp', 'fp',
+  'tchol', 'trig', 'ldl', 'dyslip', 'cesd',
+  'dkgrp', 'heropiate', 'idu', 'hivpos', 'art',
+  'ever_art'
+)
+
+data = data[,!(names(data) %in% drop)]
+
+data$log_vload = log10(data$vload)
+
+# set bmi values of 999 to NA and remove unrealistic values
+for (i in 1:dim(data)[1]) {
+  if (!is.na(data$bmi[i])) {
+    if (data$bmi[i] == 999 || data$bmi[i] == -1 || data$bmi[i] > 100) {
+      data$bmi[i] = NA
+    }
+  }
+}
+
+# collapse adherence
+for (i in 1:dim(data)[1]) {
+  if (!is.na(data$adh[i])) {
+    if (data$adh[i] == 1 || data$adh[i] == 2) {
+      data$adh[i] = 0
+      
+    } else if (data$adh[i] == 3 || data$adh[i] == 4) {
+      data$adh[i] = 1    
+    }
+  }
+}
+
+# collapse race
+for (i in 1:dim(data)[1]) {
+  if (!is.na(data$race[i])) {
+    if (data$race[i] == 4) {
+      data$race[i] = 2
+      
+    } else if (data$race[i] > 3) {
+      data$race[i] = 4
+    }
+  }
+}
+
+# collapse education
+for (i in 1:dim(data)[1]) {
+  if (!is.na(data$educbas[i])) {
+    if (data$educbas[i] == 2) {
+      data$educbas[i] = 1
+      
+    } else if (data$educbas[i] == 3) {
+      data$educbas[i] = 2
+    } else {
+      data$educbas[i] = 3
+    }
+  }
+}
+
+# collapse smoking status
+for (i in 1:dim(data)[1]) {
+  if (!is.na(data$smoke[i])) {
+    if (data$smoke[i] == 1 || data$smoke[i] == 2) {
+      data$smoke[i] = 0
+      
+    } else if (data$smoke[i] == 3) {
+      data$smoke[i] = 1    
+    }
+  }
+}
+
+# Make the data set with change score, and baseline values (except adh for analysis)
+row_to_keep = vector("logical", length = dim(data)[1])
+for (i in 1:dim(data)[1]) {
+  if (data$years[i] == 0 | data$years[i] == 2) {
+    row_to_keep[i] = TRUE
+  }
+}
+
+data = data[row_to_keep,]
+
+# make wide to create change scores 
+data = pivot_wider(
+  data,
+  id_cols = newid,
+  names_from = years,
+  values_from = c(
+    "agg_ment", "agg_phys", "bmi", "smoke", "leu3n", "log_vload", "adh",
+    "race", "educbas", "age", "years", "hard_drugs"
+  )
+)
+
+data_full = data.frame(data)
+
+# get adherence at two years
+data$adh_0 = data$adh_2
+
+# get change scores
+data$leu3n_change = data$leu3n_2 - data$leu3n_0
+data$log_vload_change = data$log_vload_2 - data$log_vload_0
+data$agg_ment_change = data$agg_ment_2 - data$agg_ment_0
+data$agg_phys_change = data$agg_phys_2 - data$agg_phys_0
+
+# remove unecessary columns
+data = data[, -c(7, 9, 14, 17, 19, 21, 22, 23, 25)]
+
+
+# filter out NA values
+data = data[!is.na(data$adh_2), ]
+data = data[!is.na(data$log_vload_change), ]
+data = data[!is.na(data$leu3n_change), ]
+data = data[!is.na(data$agg_ment_change), ]
+data = data[!is.na(data$agg_phys_change), ]
+data = data[!is.na(data$bmi_0), ]
+```
+\newpage
+\doublespacing
+\section{Introduction}
+
+The investigative team has been tasked with performing a secondary data analysis of the Multicenter AIDS Cohort Study.These data are from an ongoing prospective cohort study of the natural and treated histories of HIV-1 infection in homosexual and bisexual men. Highly active anti-retroviral treatment (HAART) is the standard treatment for HIV infected patients. These data include up to 8 years of longitudinal laboratory and quality of life measures, in addition to demographic and other health information, on HIV infected men after beginning HAART.
+
+There are four measures of treatment response. The first two are laboratory measures, viral load (VLOAD), which is the number of HIV copies in one mL of blood, and the second, is CD4+ T cell count (LEU3N), a measure of immunologic health. In untreated HIV infection, viral load increases over time and CD4+ T cell counts decline as the immune system is attacked by the virus. Once treatment is initiated, the investigators expect viral load to decrease rapidly and CD4 counts to recover. The final two measures are quality of life measures from the SF-36. The first is the aggregate physical quality of life score (AGG_PHYS) and the second is the aggregate mental quality of life score (AGG_MENT). These scores range from 0 to 100, with higher scores indicating better quality of life. It is unclear what happens to quality of life after initiating treatment.
+
+The research team is interested in how treatment response two years after initiating HAART is different between subjects who report using hard drugs, such as heroine and cocaine, at baseline, and other subjects, who did not report hard drug use at baseline. The investigators have identified several variables of interest, that may have an impact on all four outcome measures, including: age, BMI, smoking status, education, race/ethnicity, and adherence. This translates to the hypothesis: hard drugs will significantly impact each of the measures of quality of life, CD4+ count and viral load. The research team was also tangentially interested in the dropout from baseline to year two in the HAART data.
+
+\section{Methods}
+\subsection{Data Cleaning}
+
+Value ranges have been provided for numeric variables, and have been replaced as missing. Viral load will be log base 10 transformed due to extremely large values. Typical ranges of Cd4+ are between 500 and 1,500, and thus a value below 200 results in an AIDS Diagnosis. This will be kept in mind during the analysis. Values of 9 or 999 were recorded for DYSLIP, FP, FRP, BMI, where there were insufficient data, and thus will be treated as missing. The analysis was done based on a complete case analysis, as determined by the researchers. Thus across all analyses there are 463 subjects used for each bayesian linear regression. The summary statistics for each outcome at baseline and known variables of interest for each of those 463 subjects is provided in Table 1 below.
+
+\subsection{Data Analysis}
+
+The analysis performed will be a simple linear regression in a Bayesian framework, with its frequentist counterpart used as a benchmark for analysis. The analysis will examine the four quality of life measures at baseline and 2 years. Each of the variables of interest, Age, BMI, smoking status, education, and race/ethnicity are recorded at baseline. The variable of interest, adherence, is recorded at 2 years. 
+
+All parameters for the Byesian analysis were given non-informative priors. After a prior sensitivity analysis, it was determined that too narrow of prior distribution affected the modeling scheme significantly, and thus non-informative priors were used. See prior specification below.
+
+\section{Results}
+
+```{r results, echo = FALSE, include=FALSE}
+# univarites
+vload_uni = read.csv("../output/vload_unimodel.csv") %>% clean_names()
+leu3n_uni = read.csv("../output/leu3n_unimodel.csv") %>% clean_names()
+agg_ment_uni = read.csv("../output/agg_ment_unimodel.csv") %>% clean_names()
+agg_phys_uni = read.csv("../output/agg_phys_unimodel.csv") %>% clean_names()
+
+# multivariates
+vload_full = read.csv("../output/vload_fullmodel.csv") %>% clean_names()
+leu3n_full = read.csv("../output/leu3n_fullmodel.csv") %>% clean_names()
+agg_ment_full = read.csv("../output/agg_ment_fullmodel.csv") %>% clean_names()
+agg_phys_full = read.csv("../output/agg_phys_fullmodel.csv") %>% clean_names()
+
+# univariate  frequentist models
+leu3n_uni_freq = summary(lm(leu3n_change ~ hard_drugs_0, data=data))$coefficients
+vload_uni_freq = summary(lm(log_vload_change ~ hard_drugs_0, data=data))$coefficients
+aggment_uni_freq = summary(lm(agg_ment_change ~ hard_drugs_0, data=data))$coefficients
+aggphys_uni_freq = summary(lm(agg_phys_change ~ hard_drugs_0, data=data))$coefficients
+
+# multivariate frequentist models
+leu3n_full_freq = summary(lm(leu3n_change ~ leu3n_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))$coefficients
+vload_full_freq = summary(lm(log_vload_change ~ log_vload_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))$coefficients
+aggment_full_freq = summary(lm(agg_ment_change ~ agg_ment_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))$coefficients
+aggphys_full_freq = summary(lm(agg_phys_change ~ agg_phys_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))$coefficients
+
+table2 = data.frame(
+  "Treatment Response" = c("CD4+ Count", "CD4+ Count", "Log 10 Viral load", "Log 10 Viral load", "SF36 MCS", "SF36 MCS", "SF36 PCS", "SF36 PCS"),
+  "Model Type" = c("Crude", "Adjusted","Crude", "Adjusted","Crude", "Adjusted","Crude", "Adjusted"),
+  "Hard Drugs" = c(leu3n_uni[2, 2], leu3n_full[8, 2], vload_uni[2, 2], vload_full[8, 2], agg_ment_uni[2, 2], agg_ment_full[8, 2], agg_phys_uni[2, 2], agg_phys_full[8, 2]),
+  "95% HDPI" = c(leu3n_uni[2, 5], leu3n_full[8, 5], vload_uni[2, 5], vload_full[8, 5], agg_ment_uni[2, 5], agg_ment_full[8, 5], agg_phys_uni[2, 5], agg_phys_full[8, 5]),
+  "DIC" = c(leu3n_uni[2, 6], leu3n_full[8, 6], vload_uni[2, 6], vload_full[8, 6], agg_ment_uni[2, 6], agg_ment_full[8, 6], agg_phys_uni[2, 6], agg_phys_full[8, 6]),
+  "P" = c(leu3n_uni[2, 7], leu3n_full[8, 7], vload_uni[2, 7], vload_full[8, 7], agg_ment_uni[2, 7], agg_ment_full[8, 7], agg_phys_uni[2, 7], agg_phys_full[8, 7]))
+
+ci = matrix(NA, 8, 2)
+
+ci[1,] = confint(lm(leu3n_change ~ hard_drugs_0, data=data))[2,]
+ci[2,] = confint(lm(leu3n_change ~ leu3n_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))[8,]
+ci[3,] = confint(lm(log_vload_change ~ hard_drugs_0, data=data))[2,]
+ci[4,] = confint(lm(log_vload_change ~ log_vload_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))[8,]
+ci[5,] = confint(lm(agg_ment_change ~ hard_drugs_0, data=data))[2,]
+ci[6,] = confint(lm(agg_ment_change ~ agg_ment_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))[8,]
+ci[7,] = confint(lm(agg_phys_change ~ hard_drugs_0, data=data))[2,]
+ci[8,] = confint(lm(agg_phys_change ~ agg_phys_0 + age_0 + bmi_0 + smoke_0 + educbas_0 + adh_2 + hard_drugs_0, data=data))[8,]
+
+table3 = data.frame(
+  "Treatment Response" = c("CD4+ Count", "CD4+ Count", "Log 10 Viral load", "Log 10 Viral load", "SF36 MCS", "SF36 MCS", "SF36 PCS", "SF36 PCS"),
+  "Model Type" = c("Crude", "Adjusted","Crude", "Adjusted","Crude", "Adjusted","Crude", "Adjusted"),
+  "Hard Drugs" = c(leu3n_uni_freq[2, 1], leu3n_full_freq[8, 1], vload_uni_freq[2, 1], vload_full_freq[8, 1], aggment_uni_freq[2, 1], aggment_full_freq[8, 1], aggphys_uni_freq[2, 1], aggphys_full_freq[8, 1]),
+  "95% HPDI" = c(paste("(", round(ci[1, 1],3), ", ", round(ci[1, 2], 3), ")", sep = ""), paste("(", round(ci[2, 1],3), ", ", round(ci[2, 2], 3), ")", sep = ""), paste("(", round(ci[3, 1],3), ", ", round(ci[3, 2], 3), ")", sep = ""), paste("(", round(ci[4, 1],3), ", ", round(ci[4, 2], 3), ")", sep = ""), paste("(", round(ci[5, 1],3), ", ", round(ci[5, 2], 3), ")", sep = ""), paste("(", round(ci[6, 1],3), ", ", round(ci[6, 2], 3), ")", sep = ""), paste("(", round(ci[7, 1],3), ", ", round(ci[7, 2], 3), ")", sep = ""), paste("(", round(ci[8, 1],3), ", ", round(ci[8, 2], 3), ")", sep = ""))
+)
+
+```
+
+\subsection{Descriptive Statistics}
+
+The descriptive statistics in Table 1 show us that there are a few differences between the hard drug users and non hard drug user groups for the $n = 463$ subjects. Partiuclarly for smoking status, education, and adherence. This would be evident in our multivariate analyses. Of particular note are the differences in smoking and adherence between the two groups.
+
+\subsection{Bayesian Regression}
+
+The investigators noted particular interest in the effects of hard drug use on each of the four outcomes. A change of 10% change between user and non-user groups would represent significant clinical results. Based on our results in Table 2, it is evident that both CD4+ count and Aggregate Physical score are significantly impacted by the the use of hard drugs (posterior probability > 0.95 for a 10% change). Hard drug use had a slightly lower posterior probability of indicating a 10% change in aggregate mental score (~0.9). Log viral load was not significantly impacted by the use of hard drugs. This is true in both the uni-variate and multivariate iterations of this analysis.
+
+The average CD4+ count after adjusting for adherence, age, BMI, education, race/ethnicity, and smoking status decreased by`r round(table2[2, 3], 3)` for hard drug users. Viral load increased by a factor of `r round(10^table2[4, 3], 3)` for hard drug users after adjusting for covariates. Aggregate mental score decreased by `r table2[6, 3]` on average for hard drug users after adjustment. And aggregate physical score decreased on average by`r table2[8, 3]` after adjustment for hard drug users.
+
+The introduction of each of the covariates education, smoking status, race, age and BMI did not yield significantly different results in the two outcomes CD4+ count and aggregate physical score. However, for each of the two outcomes where the effects of hard drugs was not significant (log viral load and aggregate mental score), the estimate of the effects of hard drugs changed significantly, in magnitude and direction. For log based 10 viral load this translates to an decrease in the percent change in the effect of hard drugs on viral load after adjusting for covariates.
+
+\subsection{Frequentist Regression}
+
+For the purposes of benchmarking the estimates of our Bayesian linear regression results from a frequentist iteration of the same analysis have been provided. The estimates yielded similar results, and thus there should not be any concern that the posterior distribution was not properly sampled, or that the prior distributions had any significant impact over the reported results.
+
+\subsection{Dropout}
+
+```{r dropout, echo=FALSE, include=FALSE}
+leu3n_0_len = dim(data_full[!is.na(data_full$leu3n_0),])[1]
+leu3n_2_len = dim(data_full[!is.na(data_full$leu3n_2),])[1]
+
+vload_0_len = dim(data_full[!is.na(data_full$log_vload_0),])[1]
+vload_2_len = dim(data_full[!is.na(data_full$log_vload_2),])[1]
+
+agg_phys_0_len = dim(data_full[!is.na(data_full$agg_phys_0),])[1]
+agg_phys_2_len = dim(data_full[!is.na(data_full$agg_phys_2),])[1]
+
+agg_ment_0_len = dim(data_full[!is.na(data_full$agg_ment_0),])[1]
+agg_ment_2_len = dim(data_full[!is.na(data_full$agg_ment_2),])[1]
+
+leu3n_percent = round((leu3n_0_len - leu3n_2_len) / leu3n_0_len * 100, 2)
+vload_percent = round((vload_0_len - vload_2_len) / vload_0_len * 100, 2)
+agg_ment_percent = round((agg_ment_0_len - agg_ment_2_len) / agg_ment_0_len * 100, 2)
+agg_phys_percent = round((agg_phys_0_len - agg_phys_2_len) / agg_phys_0_len * 100, 2)
+
+table4 = data.frame(
+  "Variable" = c("CD4+", "", "Viral Load", "", "SF-36 MCS", "", "SF-PCS", ""),
+  "Time Point" = c("baseline", "2 years", "baseline", "2 years", "baseline", "2 years", "baseline", "2 years"),
+  "N" = c(leu3n_0_len, leu3n_2_len, vload_0_len, vload_2_len, agg_ment_0_len, agg_ment_2_len, agg_phys_0_len, agg_phys_2_len),
+  "% Dropout" = c("", leu3n_percent, "", vload_percent, "", agg_ment_percent, "", agg_phys_percent)
+)
+colnames(table4) = c("Variable", "Time Point", "N", "% Dropout")
+
+```
+
+There was noticeable dropout from baseline to two years for each of the four outcomes, as seen in table 4. Additionally, many subjects were missing data for some of: education, smoking, adherence, race/ethnicity, BMI, and age. This will be noted as a study limitation.
+
+\section{Conclusion}
+
+The purpose of this analysis was to identify the effects of hard drugs use on four outcomes, in a study of HIV positive subjects. Those outcomes were CD4+ count, log based 10 transformed viral load, SF-36 aggregate mental score, and SF-36 aggregate physical score. For CD4+ count and aggregate physical score, there was a significant effect in the outcome as a results of hard drugs use. Hard drug users did not experience as much success as a part of the HAART treatment.
+
+Adjusting for the variables age, BMI, education, race/ethnicity, adherece, and smoking status provided better context for interpreting viral load and aggregate mental score. For CD4+ white blood cell count and aggregate physical score, these variables had negligible effects on the affect of hard drugs for these two outcomes. The analysis has confirmed both the importance of hard drug use to the HAART treatment, as well as the importance of including contextual variables like smoking status, adherence, age, BMI, education and race/ethnicity.
+
+\subsection{Limitations}
+
+There were two limitations of not for this analysis. There was significant loss to follow up from baseline to year two, which in a complete case analysis heavily affects our sample size (see table 4). Our Sample size was large enough (n = 463) though that we are still adequately powered to perform this analysis. Secondly, there were large amounts of missing data, and again in a complete case analysis this means that our sample size was decreased due to missing data. This was particularly evident the the variable BMI. Between these two effects several hundred observations were removed. Lastly, the variable of interest, hard drug use, was observed for all subjects at baseline, which does not account for new use of hard drugs after baseline survey results. The results of this analysis would suggest that researchers may be interested in a new line of questioning involving hard drug use after baseline survey results.
+
+\newpage
+\section{Tables}
+\subsection{Table 1}
+\singlespacing
+\centering
+```{r table0, echo = FALSE, include = TRUE, warning = FALSE, comment = FALSE, message = FALSE}
+data_table1 = data
+
+table1 = CreateTableOne2(vars=c("agg_ment_0", "agg_phys_0", "log_vload_0","leu3n_0", "bmi_0", "age_0", "adh_2", "race_0", "educbas_0", "smoke_0"), factorVars = c("adh_2", "race_0", "educbas_0", "smoke_0"), strata = "hard_drugs_0", data = data_table1)
+colnames(table1)[1] = "Hard Drugs"
+colnames(table1)[2] = "Absence"
+colnames(table1)[3] = "Presence"
+rownames(table1) = c("n", "Mental Score (Mean ± sd)", "Physical Score (Mean ± sd)", "Log Viral Load (Mean ± sd)", "CD4 positive cell count (Mean ± sd)",  "BMI (Mean ± sd)", "Age (Mean ± sd)", "Race/Ethnicity (%)", "", "", "", "Education (%)", "", "", "Adherence (%)", "", "Smoker (%)", "")
+table1[, 1] = c("", "", "", "", "", "", "", "White, non-Hispanic", "Black, non-Hispanic", "Hispanic", "Other", "< High School", "High School", "> High School", "Not Adherent", "Adherent", "Non-Smoker", "Smoker")
+kable(table1[,1:3], booktabs = TRUE)
+
+```
+\textbf{Table 1.} Summary Statistics for complete case analysis of outcomes and potential confounding variables.
+\newpage
+\subsection{Table 2}
+
+```{r table2, echo=FALSE, include=TRUE}
+colnames(table2) = c("Treatment Response", "Model Type", "Hard Drugs", "95% HPDI", "DIC", "P(10% Change)")
+kable(table2, booktabs = TRUE)
+
+```
+\textbf{Table 2.} Table of Results of the Bayesian Regression Analysis, with posterior mean estimates for the Variable of interest, Hard Drug use. Reported are the Highest posterior density intervals, and the deviance criterion for each model.
+\newpage
+\subsection{Table 3}
+
+```{r table3, echo=FALSE, include=TRUE}
+colnames(table3) = c("Treatment Response", "Model Type", "Hard Drugs", "95% CI")
+kable(table3, booktabs = TRUE)
+
+```
+\textbf{Table 3.} Table of Results of the Frequentist Regression Analysis, with posterior mean estimates for the Variable of interest, Hard Drug use. Reported are the 95% confidence intervals.
+\newpage
+\subsection{Table 4}
+
+```{r table4, echo=FALSE, include=TRUE}
+kable(table4, booktabs=TRUE)
+
+```
+\textbf{Table 3.} Table of analysis of dropout at year two.
+
+\newpage
+\raggedright
+\doublespacing
+\section{Prior Specification}
+
+$$\beta_{intercept}\sim\mathcal{N}(0.5, 0.0000001)$$
+$$\beta_{i}\sim\mathcal{MVN}(0.5, 0.0000001)$$
+$$\epsilon_i\sim \mathcal{G}amma(0.0001, 0.0001)$$
+
+\section{Reproducibility}
+
+Code for this analysis is availables from `https://github.com/BIOS6624-UCD/bios6624-JoeFroelicher/project1`, under the branch `project1`. Special note to `@willippit` and `@ehccooper` for calculation of probabilities and inspiration for tables respectively.

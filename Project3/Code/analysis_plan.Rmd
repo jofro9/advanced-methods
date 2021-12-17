@@ -1,0 +1,161 @@
+---
+title: "Project 3, Analysis Plan"
+author: "Joseph Froelicher"
+date: "November 6, 2021"
+output: pdf_document
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../Reports") })
+
+---
+
+\section{Introduction}
+
+Beginning in 1948, subjects were enrolled in a Heart disease study in the city of Framingham, Massachusetts. Our data come from a subset of that data consisting of the years 1956 - 1968. Participants were followed by hospital visits, participant contact and through death certificates for the occurrence of Angina Pectoris, Myocardial Infarction, Heart Failure, and Cerebrovascular disease.
+
+Using the 10-year probability of stroked based on different risk profiles, the goal is to identify any risk factors for stroke based on our data. These are our two aims for this analysis:
+
+1. Determine which risk factors are most associated with increased hazard of having a stroke
+
+2. Analyze how much temporal change in the associated risk factors, and whether a more sophisticated temporal analysis is needed.
+
+\section{Data}
+
+```{r data, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(janitor)
+library(jstable)
+library(kableExtra)
+library(naniar)
+library(survival)
+library(survminer)
+library(tidyr)
+library(tidyverse)
+
+data = read.csv('../data_raw/frmgham2.csv') %>% clean_names()
+
+data$timestrk10yr = vector("double", length = dim(data)[1])
+data$strk10yr = vector("double", length = dim(data)[1])
+
+# create stroke and time stroke variables
+for (i in 1:dim(data)[1]) {
+  data$timestrk10yr[i] = min(data$timestrk[i], data$timedth[i], 3650)
+  
+  if (data$timestrk[i] > 3650) {
+    data$strk10yr[i] = 0
+  } else if (data$stroke[i] == 1 & data$timestrk[i] <= 3650) {
+    data$strk10yr[i] = 1
+  }
+}
+
+# get all participants who didn't have a previous stroke in period 1 and observations that are in period 1
+data = data[data$prevstrk == 0 & data$period == 1,]
+
+percent_stroke = dim(data[data$strk10yr == 1, ])[1] / dim(data)[1] * 100
+num_stroke = dim(data[data$strk10yr == 1, ])[1]
+
+```
+
+Our data consist of $4,434$ participants who's data were collected in 6 year periods from approximately 1956 - 1968. Each participant has anywhere from one to three observations, depending on how many examinations they attended ($11,627$ observations). During the cleaning process, $32$ participants were dropped due to having a previous stroke in the first period, so the usable data has $4,402$ participants. The list of outcomes collected include: Angina Pectoris, Myocardial Infarction, Atherothrombotic Infarction, Cerebral Hemorrhage (Stroke) or death. The data include information about binary sex (M/F), age, blood pressure, smoking status, medication use, cholesterol, BMI, glucose level, and diabetes status. There is missing data throughout the data set, primarily if four variables, High Density lipoprotein Cholesterol, Low Density Lipoprotein Cholesterol, BMI, and glucose. We are interested in the time to event of Cereberal Hemorrhage (stroke), in the first 10 years. In our data there were `r round(percent_stroke, 2)`% who had a stroke in the 10 year period (n = `r num_stroke`).
+
+\section{Analysis Plan}
+
+To address aim 1, we are analyzing which risk factors are most highly associated with the hazard of stroke. There are several risk factors available, they include: age, systolic blood pressure, diastolic blood pressure, use of anti-hypertensive medication, current cigarette smoking, number of cigarettes per day, cholesterol, body mass index, glucose, diabetes status, and heart rate. As per the request of the principal investigator, these analysis will be stratified by sex. To assess the time to event of the hazard of stroke, Kaplan-Meier curves will be used. As mentioned above, events are strokes that occurred in the first 10 years of the study, and the time of each even is the minimum of: the event, death, and time to censoring (10 years). We will also build a Cox proportional hazards model to asses all of the associated risk factors in a model together. Then variable selection will be performed as outline in Tibshirani (1997) and Zhang & Lu (2007) using LASSO or Adaptive-LASSO for Cox's proportional hazards models.
+
+To address aim 2, we will investigate the assumption of Cox's proportional hazards models that the hazards themselves are actually proportional. To assess the proportional hazards, we will make "$log(-log(S(t)))$" graphs, and check the Schoenfeld residuals. And if there appears to be some violation of the proportionality assumption, then we will interact the variables that are not proportional with time, within a second proportional hazards model to reassess the hazard of stroke with selected risk factors. If necessary, we may also build generlaized linear models with each of the associated risk factors as outcomes, to assess the significance of time against each associated outcome.
+
+\newpage
+\section{Tables and Figures}
+
+```{r table1, echo=FALSE, include=TRUE, guide="none", comment=FALSE, warning=FALSE}
+
+# create table 1
+table1_data = data.frame(data)
+vars = colnames(table1_data)[c(2:12, 24, (length(colnames(data))-1):length(colnames(data)))]
+cat_vars = vars[c(1, 6, 9, 10, length(vars) - 2, length(vars))]
+
+table1 = CreateTableOne2(table1_data, strata = "strk10yr", vars = vars, factorVars = cat_vars)
+
+# missingness column
+table1[2, 4] = dim(data[is.na(data$sex == 1),])[1] / dim(data)[1] * 100
+table1[3, 4] = dim(data[is.na(data$sex == 2),])[1] / dim(data)[1] * 100
+table1[4, 4] = dim(data[is.na(data$totchol),])[1] / dim(data)[1] * 100
+table1[5, 4] = dim(data[is.na(data$age),])[1] / dim(data)[1] * 100
+table1[6, 4] = dim(data[is.na(data$sysbp),])[1] / dim(data)[1] * 100
+table1[7, 4] = dim(data[is.na(data$diabp),])[1] / dim(data)[1] * 100
+table1[8, 4] = dim(data[is.na(data$cursmoke == 0),])[1] / dim(data)[1] * 100
+table1[9, 4] = dim(data[is.na(data$cursmoke == 1),])[1] / dim(data)[1] * 100
+table1[10, 4] = dim(data[is.na(data$cigpday),])[1] / dim(data)[1] * 100
+table1[11, 4] = dim(data[is.na(data$bmi),])[1] / dim(data)[1] * 100
+table1[12, 4] = dim(data[is.na(data$diabetes == 0),])[1] / dim(data)[1] * 100
+table1[13, 4] = dim(data[is.na(data$diabetes == 1),])[1] / dim(data)[1] * 100
+table1[14, 4] = dim(data[is.na(data$bpmeds == 0),])[1] / dim(data)[1] * 100
+table1[15, 4] = dim(data[is.na(data$bpmeds == 1),])[1] / dim(data)[1] * 100
+table1[16, 4] = dim(data[is.na(data$heartrte),])[1] / dim(data)[1] * 100
+table1[17, 4] = dim(data[is.na(data$death == 0),])[1] / dim(data)[1] * 100
+table1[18, 4] = dim(data[is.na(data$death == 1),])[1] / dim(data)[1] * 100
+table1[19, 4] = dim(data[is.na(data$timestrk10yr),])[1] / dim(data)[1] * 100
+
+# round missingness
+table1[2:dim(table1)[1], 4] = round(as.numeric(table1[2:dim(table1)[1], 4]), 3)
+
+# total column
+table1[1, 5] = dim(data)[1]
+table1[2, 5] = dim(data[data$sex == 1,])[1]
+table1[3, 5] = dim(data[data$sex == 2,])[1]
+table1[4, 5] = paste(round(mean(data$totchol, na.rm = T), 2), "±", round(sd(data$totchol, na.rm = T), 2))
+table1[5, 5] = paste(round(mean(data$age, na.rm = T), 2), "±", round(sd(data$age, na.rm = T), 2))
+table1[6, 5] = paste(round(mean(data$sysbp, na.rm = T), 2), "±", round(sd(data$sysbp, na.rm = T), 2))
+table1[7, 5] = paste(round(mean(data$diabp, na.rm = T), 2), "±", round(sd(data$diabp, na.rm = T), 2))
+table1[8, 5] = dim(data[data$cursmoke == 0,])[1]
+table1[9, 5] = dim(data[data$cursmoke == 1,])[1]
+table1[10, 5] = paste(round(mean(data$cigpday, na.rm = T), 2), "±", round(sd(data$cigpday, na.rm = T), 2))
+table1[11, 5] = paste(round(mean(data$bmi, na.rm = T), 2), "±", round(sd(data$bmi, na.rm = T), 2))
+table1[12, 5] = dim(data[data$diabetes == 0,])[1]
+table1[13, 5] = dim(data[data$diabetes == 1,])[1]
+table1[14, 5] = dim(data[data$bpmeds == 0,])[1]
+table1[15, 5] = dim(data[data$bpmeds == 1,])[1]
+table1[16, 5] = paste(round(mean(data$heartrte, na.rm = T), 2), "±", round(sd(data$heartrte, na.rm = T), 2))
+table1[17, 5] = dim(data[data$death == 0,])[1]
+table1[18, 5] = dim(data[data$death == 1,])[1]
+table1[19, 5] = paste(round(median(data$timestrk10yr, na.rm = T), 2), "±", round(sd(data$timestrk10yr, na.rm = T), 2))
+
+# change time to event to medians
+table1[19, 2] = paste(round(median(data[data$strk10yr == 0,]$timestrk10yr, na.rm = T), 2), "±", round(sd(data[data$strk10yr == 0,]$timestrk10yr, na.rm = T), 2))
+table1[19, 3] = paste(round(median(data[data$strk10yr == 1,]$timestrk10yr, na.rm = T), 2), "±", round(sd(data[data$strk10yr == 0,]$timestrk10yr, na.rm = T), 2))
+
+# fix column names
+colnames(table1) = c("Level", "Censored", "Stroke", "Missing (%)", 'Overall', "")
+rownames(table1) = c("N", "Sex (%)", "", "Cholesterol", "Age", "sBP", "dBP", "Smoke (%)", "", "Cigs/day", "BMI", "Diabetees (%)", "", "Medication", "", "Heart Rate", "Death (%)", "","Time to Event (Median)", "", "")
+
+table1[, 1] = c("", "Men", "Women", "", "", "", "", "No", "Yes", "", "", "No", "Yes", "No", "Yes", "", "No", "Yes", "", "", "")
+
+# output table
+kable(table1[1:19,1:5], booktabs=T)
+
+```
+\textbf{Table 1.} Descriptive Statistics for the Framingham heart data. Continuous variables have means reported, categorical variables have counts and percentages reported.
+\newpage
+
+```{r missingness, echo=FALSE, include=TRUE, warning=FALSE, comment=FALSE}
+
+gg_miss_var(data[,-c(22:23)]) + labs(title = "Missingness in Framingham Heart Data")
+
+```
+\textbf{Figure 1.} Missingness plot for Framingham Heart data.
+\newpage
+
+```{r km, echo=FALSE, include=TRUE}
+# survival analysis
+model1 = coxph(Surv(time=timestrk10yr, event=strk10yr)~sex, data=data)
+
+new_data1 = data.frame(sex=c(1, 2))
+
+ggsurv = ggsurvplot(survfit(model1, newdata=new_data1), data=data, censor=F, conf.int=F, legend="none", xlim=c(0, max(survfit(model1)$time)),title="Estimated Baseline Survival Curve")
+
+strata_labels = c("Men", "Women")
+names(strata_labels) = c(1, 2)
+
+ggsurv$plot + theme_bw() + facet_wrap(~strata, labeller = labeller(strata=strata_labels)) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+
+```
+\textbf{Figure 2.} Estimate Baseline sruvival curves for men and women, with no covariates added.
